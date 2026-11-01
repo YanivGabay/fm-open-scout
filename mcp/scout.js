@@ -14,8 +14,11 @@ const ROLES = {
   ST: { positions: ['ST'], key: ['finishing', 'composure', 'off_the_ball', 'first_touch', 'anticipation', 'acceleration'], sec: ['pace', 'dribbling', 'heading', 'decisions', 'technique', 'strength', 'jumping_reach'] },
 };
 
-// Best-XI slots used to compare squads.
+// Best-XI slots used to compare squads (display order).
 const XI = [['GK', 1], ['FB', 2], ['CB', 2], ['DM', 1], ['CM', 1], ['AM', 1], ['W', 2], ['ST', 1]];
+// Fill order: specialist slots first, so a natural striker is not used up on the
+// wing before the striker slot is filled.
+const FILL_ORDER = ['GK', 'CB', 'FB', 'ST', 'DM', 'CM', 'AM', 'W'];
 
 const YEAR_MS = 365.25 * 24 * 3600 * 1000;
 
@@ -168,19 +171,23 @@ function search(data, f = {}) {
   return { total: rows.length, club, exclude, rows: rows.slice(0, Math.min(f.limit || 20, 100)) };
 }
 
-// Best XI by slot: each player is used once, slots filled in XI order by CA.
+// Best XI by slot: each player is used once; specialist slots are filled first.
 function bestXI(data, club) {
   const squad = data.players.filter((p) => p.club === club).sort((a, b) => b.ca - a.ca);
   const used = new Set();
-  const slots = [];
-  for (const [role, n] of XI) {
+  const picked = {};
+  const count = Object.fromEntries(XI);
+  for (const role of FILL_ORDER) {
     const picks = [];
-    for (const p of squad) {
-      if (picks.length >= n) break;
+    // Natural players for the slot (rating 18+) first, then the rest, each by CA.
+    const natural = (p) => (roleRating(p, role) >= 18 ? 1 : 0);
+    for (const p of [...squad].sort((a, b) => natural(b) - natural(a) || b.ca - a.ca)) {
+      if (picks.length >= count[role]) break;
       if (!used.has(p.uid) && roleRating(p, role) >= 15) { used.add(p.uid); picks.push(p); }
     }
-    slots.push({ role, players: picks });
+    picked[role] = picks;
   }
+  const slots = XI.map(([role]) => ({ role, players: picked[role] }));
   const all = slots.flatMap((s) => s.players);
   return { club, slots, average: all.length ? all.reduce((s, p) => s + p.ca, 0) / all.length : 0 };
 }

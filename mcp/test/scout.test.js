@@ -74,6 +74,18 @@ test('best XI uses each player once', () => {
   assert.equal(all.filter((n) => n === 'Both').length, 1);
 });
 
+test('best XI keeps a natural striker up front', () => {
+  const data = { players: [
+    player({ name: 'Winger', positions: { AML: 20, ST: 15 }, ca: 136 }),
+    player({ name: 'Striker', positions: { ST: 20, AML: 15 }, ca: 127 }),
+    player({ name: 'Winger 2', positions: { AMR: 18 }, ca: 125 }),
+    player({ name: 'Winger 3', positions: { AMR: 18 }, ca: 124 }),
+  ] };
+  const xi = scout.bestXI(data, 'Club A');
+  assert.deepEqual(xi.slots.find((s) => s.role === 'ST').players.map((p) => p.name), ['Striker']);
+  assert.deepEqual(xi.slots.find((s) => s.role === 'W').players.map((p) => p.name), ['Winger', 'Winger 2']);
+});
+
 test('similar by attributes ranks the same style first, among similar levels', () => {
   const ref = player({ name: 'Ref', best: 'ST', ca: 150, attrs: { finishing: 18, pace: 17 } });
   const twin = player({ name: 'Twin', best: 'ST', ca: 145, attrs: { finishing: 17, pace: 16 } });
