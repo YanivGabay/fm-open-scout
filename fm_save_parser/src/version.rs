@@ -89,22 +89,30 @@ pub struct DbHeader {
     pub tag: Option<String>,
     /// In-game date stored 16 bytes after the tag string.
     pub current_date: Option<FmDate>,
-    /// Offset of the `"DB"` marker.
-    pub marker_offset: usize,
+    /// Offset of the `"DB"` marker; `None` when the save has none (see below).
+    pub marker_offset: Option<usize>,
+}
+
+fn tag_at(d: &[u8], range: std::ops::Range<usize>) -> Option<usize> {
+    range.into_iter().find(|&o| u32_at(d, o) == Some(4) && d.get(o + 4..o + 8).is_some_and(|s| s.iter().all(u8::is_ascii_digit)))
 }
 
 /// Parses the start of `game_db.dat`. The `"DB"` marker sits a few bytes after the
 /// chunk header (FM24: +2, FM26: +6); the tag follows as a `u32`-length string of
-/// four ASCII digits (FM26 inserts one extra `u16` before it).
+/// four ASCII digits (FM26 inserts one extra `u16` before it). Some FM24 saves have
+/// `u32 8` instead of `"DB" u16 0x0f`; there the schema version is the `u16` just
+/// before the tag.
 pub fn parse_db_header(d: &[u8]) -> Option<DbHeader> {
     let hdr = chunk_header(d)?;
     let window = d.get(CHUNK_HEADER_LEN..64.min(d.len()))?;
-    let rel = window.windows(2).position(|w| w == b"DB")?;
-    let marker_offset = CHUNK_HEADER_LEN + rel;
-    let db_version = u16_at(d, marker_offset + 4)?;
-    let tag_at = (marker_offset + 6..marker_offset + 16).find(|&o| {
-        u32_at(d, o) == Some(4) && d.get(o + 4..o + 8).is_some_and(|s| s.iter().all(u8::is_ascii_digit))
-    });
+    let marker_offset = window.windows(2).position(|w| w == b"DB").map(|rel| CHUNK_HEADER_LEN + rel);
+    let (db_version, tag_at) = match marker_offset {
+        Some(m) => (u16_at(d, m + 4)?, tag_at(d, m + 6..m + 16)),
+        None => {
+            let t = tag_at(d, CHUNK_HEADER_LEN..48)?;
+            (u16_at(d, t - 2)?, Some(t))
+        }
+    };
     let tag = tag_at.map(|o| String::from_utf8_lossy(&d[o + 4..o + 8]).into_owned());
     // After the tag: u16, u16 year, u32, [8 bytes, FM27+], u16 year, u16, date.
     // FM24: tag at 20, date at 36; FM26: tag at 26, date at 42; FM27: tag at 26, date at 50.
@@ -244,6 +252,15 @@ mod tests {
         assert_eq!(old.layout_major(), 27);
         v.saved_with = Some("26.1.0".into());
         assert_eq!(v.layout_major(), 27);
+    }
+
+    #[test]
+    fn db_header_without_marker() {
+        // FM24 save (Sporting CP, 24.4.2) with u32 8 in place of "DB" 0x0f.
+        const DB: &[u8] = b"\x03\x01tad.\xf1\x0d\x00\x00\x08\x00\x00\x00\xf1\x0d\x04\x00\x00\x002430K2\xe8\x07\x97\x94\x04\x00\xe7\x07\x30\x0d\xce\x80\xeb\x07";
+        let v = detect_from_parts(None, Some(DB)).unwrap();
+        assert_eq!((v.major, v.db_version, v.db_tag.as_deref()), (24, Some(3569), Some("2430")));
+        assert_eq!(v.current_date.as_deref(), Some("2027-07-25")); // day 206
     }
 
     #[test]

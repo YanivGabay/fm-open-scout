@@ -5,3 +5,4 @@ fm_save_parser/target/
 *.fm.json
 /scratch/
 /saves/
+/bin/

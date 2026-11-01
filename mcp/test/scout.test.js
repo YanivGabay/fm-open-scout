@@ -45,6 +45,16 @@ test('search filters by role rating, age, value and sorts', () => {
   assert.deepEqual(scout.search(data, { free_agents_only: true }).rows.map((p) => p.name), ['Free CB']);
 });
 
+test('budget filters need a known price; capped values are not prices', () => {
+  const raw = (name, v, club = 'Club A') => ({ name, uid: name.length, current_ability: 130, potential_ability: 140, attributes: { determination: 10 },
+    valuation_unverified: v, club: club ? { name: club } : null, contract: club ? { weekly_wage: 1000, ends: '2028-06-30' } : null, positions: {} });
+  const data = scout.slim({ version: {}, layout: {}, players: [raw('Priced', 3e6), raw('Unknown', null), raw('Capped', 3e8), raw('Free', null, null)] });
+  assert.deepEqual(scout.search(data, { max_value: 5e6 }).rows.map((p) => p.name).sort(), ['Free', 'Priced']);
+  const capped = data.players.find((p) => p.name === 'Capped');
+  assert.equal(capped.value, null);
+  assert.ok(capped.notForSale);
+});
+
 test('max_age includes the whole year of that age', () => {
   const data = { players: [player({ name: 'A', age: 25.9 }), player({ name: 'B', age: 26.0 })] };
   assert.deepEqual(scout.search(data, { max_age: 25 }).rows.map((p) => p.name), ['A']);

@@ -132,7 +132,10 @@ pub struct Player {
     pub last_transfer: Option<LastTransfer>,
     /// GBP amount stored right after the attributes. Correlates with CA (r = 0.68 in
     /// FM24) and is capped at 300 000 000, but whether it is market value, asking
-    /// price or something else is not established.
+    /// price or something else is not established. `FFFFFFFF` (no value; ~5 % of
+    /// FM26/FM27 players, all low-CA free agents) is `None`. The cap itself is shared
+    /// by stars and by ~1 000 contracted CA 80-100 players, so 300 000 000 means
+    /// "very high or not for sale" rather than a price.
     pub valuation_unverified: Option<u32>,
     pub height_cm: Option<u8>,
     pub weight_kg: Option<u8>,
@@ -229,7 +232,7 @@ pub struct NameBlock {
     pub after: usize,
 }
 
-fn name_block_at(d: &[u8], q: usize, names: &NameTables, nation_after: Option<usize>, limits: &NameLimits) -> Option<NameBlock> {
+fn name_block_at(d: &[u8], q: usize, names: &NameTables, nation_after: Option<usize>, limits: &NameLimits, first_as_common: bool) -> Option<NameBlock> {
     if d.get(q + 4)? | d.get(q + 9)? | d.get(q + 14)? != 0 {
         return None;
     }
@@ -246,7 +249,10 @@ fn name_block_at(d: &[u8], q: usize, names: &NameTables, nation_after: Option<us
     if c == 0 || (f == 0 && s == 0) {
         return None;
     }
-    if c != u32::MAX && c as usize >= names.common.len() {
+    // Players known by their first name only (single-name newgens, mostly Brazilian
+    // and Spanish) store the first-name id as their common name.
+    let common_is_first = first_as_common && c == f && c as usize >= names.common.len();
+    if c != u32::MAX && c as usize >= names.common.len() && !common_is_first {
         return None;
     }
     let len = u32_at(d, q + 15)?;
@@ -278,7 +284,13 @@ fn name_block_at(d: &[u8], q: usize, names: &NameTables, nation_after: Option<us
     let nonempty = |s: Option<&str>| s.filter(|s| !s.is_empty()).map(str::to_owned);
     let first = nonempty(names.first.get(f));
     let last = nonempty(names.last.get(s));
-    let common = if c == u32::MAX { None } else { nonempty(names.common.get(c)) };
+    let common = if c == u32::MAX {
+        None
+    } else if common_is_first {
+        first.clone()
+    } else {
+        nonempty(names.common.get(c))
+    };
     if first.is_none() && last.is_none() && common.is_none() && full.is_empty() {
         return None;
     }
@@ -287,7 +299,12 @@ fn name_block_at(d: &[u8], q: usize, names: &NameTables, nation_after: Option<us
 
 pub fn find_name_block(d: &[u8], from: usize, to: usize, names: &NameTables, nation_after: Option<usize>, limits: &NameLimits) -> Option<NameBlock> {
     let to = to.min(from + NAME_SEARCH_LIMIT).min(d.len());
-    (from..to).find_map(|q| name_block_at(d, q, names, nation_after, limits))
+    // Single-name blocks (common id = first-name id) are accepted only when the range
+    // has no ordinary block: a neighbouring newgen's single-name block can sit before
+    // a player's own block, and taking it would rename him.
+    (from..to)
+        .find_map(|q| name_block_at(d, q, names, nation_after, limits, false))
+        .or_else(|| (from..to).find_map(|q| name_block_at(d, q, names, nation_after, limits, true)))
 }
 
 fn opt_id(v: Option<u16>) -> Option<u16> {
@@ -387,7 +404,7 @@ pub fn read_player(
         second_date: date_iso(lay.second_date()),
         contract,
         last_transfer,
-        valuation_unverified: u32_at(d, r + lay.valuation()),
+        valuation_unverified: u32_at(d, r + lay.valuation()).filter(|&v| v != u32::MAX),
         height_cm: lay.height_in_tail.and_then(|o| u8_at(d, tail + o)).filter(|&h| (120..=230).contains(&h)),
         weight_kg: lay.weight_in_tail.and_then(|o| u8_at(d, tail + o)).filter(|&w| (35..=150).contains(&w)),
         preferred_foot,

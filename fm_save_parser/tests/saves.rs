@@ -372,3 +372,14 @@ fn names_have_valid_nation_and_birth() {
         }
     }
 }
+
+/// Single-name players (common id = first-name id) are named too: under 0.5 % of
+/// players stay unnamed (it was 1-4 % before, growing with newgens).
+#[test]
+fn nearly_everyone_is_named() {
+    let fm27_data = fm27().map(|p| parse_save(&p).unwrap());
+    for s in [fm24_data(), fm26_data(), fm27_data.as_ref()].into_iter().flatten() {
+        let unnamed = s.players.iter().filter(|p| p.name.is_none()).count();
+        assert!(unnamed * 200 < s.players.len(), "{}: {unnamed} of {} unnamed", s.title, s.players.len());
+    }
+}

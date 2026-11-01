@@ -3,6 +3,7 @@
 Open-source scouting for your own Football Manager saves. Ask your AI assistant
 "find me a DM better than mine for under £25m" and get an answer from your actual save.
 
+[![CI](https://github.com/YanivGabay/fm-open-scout/actions/workflows/ci.yml/badge.svg)](https://github.com/YanivGabay/fm-open-scout/actions/workflows/ci.yml)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-yanivga-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/yanivga)
 
 > Independent project, not affiliated with or endorsed by Sports Interactive or SEGA.
@@ -33,13 +34,19 @@ Open-source scouting for your own Football Manager saves. Ask your AI assistant
 
 ## Quick start
 
-Requirements: [Rust](https://rustup.rs) and Node.js 20+.
+Requirements: Node.js 20+.
 
 ```bash
-git clone <this repo> fm-open-scout && cd fm-open-scout
-(cd fm_save_parser && cargo build --release)
+git clone https://github.com/YanivGabay/fm-open-scout.git && cd fm-open-scout
 npm install
 ```
+
+Then get the save parser, either:
+
+- **Download it:** from the [latest release](https://github.com/YanivGabay/fm-open-scout/releases/latest),
+  take the file for your system and save it as `bin/fm_save_parser` (`bin\fm_save_parser.exe`
+  on Windows; on macOS and Linux run `chmod +x bin/fm_save_parser`), or
+- **Build it** with [Rust](https://rustup.rs): `(cd fm_save_parser && cargo build --release)`.
 
 ### Use it from Claude Code
 
@@ -85,6 +92,16 @@ Add to the client's MCP configuration (for Claude Desktop: `claude_desktop_confi
 fm_save_parser/target/release/fm_save_parser info "My Save.fm"
 fm_save_parser/target/release/fm_save_parser players "My Save.fm" --top 30 --json players.json
 ```
+
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| "no .fm saves found" | Saves are looked for in `Sports Interactive/Football Manager */games` (and `cloud/games`) under Documents, OneDrive\Documents, AppData\Local, macOS Application Support and Steam Proton prefixes. If yours are elsewhere, set `FM_SAVE_DIRS`. |
+| "parser not found" | Put the release binary in `bin/` or build it (see Quick start), or set `FM_SAVE_PARSER`. |
+| Results look out of date | Save the game again; the tools always use the newest save and say when a newer one appears. |
+| "bad signature" | The file is not an FM24-FM27 save (or is still being written). Older versions: see FORMAT.md §9. |
+| A target "doesn't want to sign" | Players compare their reputation with your club's. Search lower-reputation leagues and use promotion clauses or loans. |
 
 ## How accurate is it?
 

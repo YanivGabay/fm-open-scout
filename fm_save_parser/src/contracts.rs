@@ -44,6 +44,8 @@ pub struct Contract {
     /// Raw contract kind byte (0/1 regular, 2 observed on loans; meaning inferred).
     pub kind: u8,
     pub starts: Option<String>,
+    /// `None` also for non-contract deals, which store 1900-01-02 (amateur players
+    /// on no wage; ~9 % of FM27 players).
     pub ends: Option<String>,
     /// Number of clause entries (bonuses, rises, ...); content not decoded.
     pub clauses: Option<u32>,
@@ -94,7 +96,7 @@ pub fn find_contract(d: &[u8], from: usize, to: usize, team_id: u32, clubs: Opti
     let to = to.min(d.len().saturating_sub(30));
     let w = (from..to).find(|&k| wage_pattern_at(d, k, &belongs))?;
     let header = contract_header(d, w, from.saturating_sub(4096));
-    let date = |o: usize| FmDate::read(d, o).and_then(|x| x.iso());
+    let date = |o: usize| FmDate::read(d, o).filter(|x| x.year > 1900).and_then(|x| x.iso());
     Some(Contract {
         team_id: u32_at(d, w + 9)?,
         weekly_wage: u32_at(d, w + 17)?,
@@ -164,6 +166,10 @@ mod tests {
         d.extend([0u8; 40]);
         let c = find_contract(&d, 0, d.len(), 540, None).unwrap();
         assert_eq!((c.team_id, c.weekly_wage, c.kind, c.clauses), (540, 340_000, 1, Some(2)));
+        // A non-contract deal ends on 1900-01-02: reported as no end date.
+        let mut nc = d.clone();
+        nc[50 + 8..50 + 12].copy_from_slice(&[0x02, 0x00, 0x6c, 0x07]);
+        assert_eq!(find_contract(&nc, 0, nc.len(), 540, None).unwrap().ends, None);
         assert_eq!(c.ends.as_deref(), Some("2034-06-30"));
         assert_eq!(c.starts.as_deref(), Some("2022-07-01"));
         // Another club's team id does not match.

@@ -14,7 +14,8 @@ const DONATE = 'Enjoying fm-open-scout? buymeacoffee.com/yanivga (hide with FM_O
 
 let current = null; // { data, path, modified }
 
-const money = (v) => (v ? (v >= 1e6 ? `£${(v / 1e6).toFixed(1)}m` : `£${Math.round(v / 1e3)}k`) : '-');
+const money = (v) => (v == null ? '-' : v >= 1e6 ? `£${(v / 1e6).toFixed(1)}m` : `£${Math.round(v / 1e3)}k`);
+const price = (p) => (p.notForSale ? '£300m cap' : money(p.value));
 const wage = (w) => (w == null ? '?' : `£${(w / 1000).toFixed(w < 10000 ? 1 : 0)}k`);
 const year = (d) => (d ? d.slice(0, 4) : '?');
 const local = (t) => { const d = new Date(t - t.getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16).replace('T', ' '); };
@@ -29,7 +30,7 @@ function playerRow(data, p, role) {
   const idx = scout.priceIndex(data, p);
   const roles = scout.rolesOf(p).slice(0, 2).map((r) => `${r.role} ${r.score.toFixed(1)}`).join(', ');
   return [p.name, `${p.ca}/${p.pa}`, p.age == null ? '?' : Math.floor(p.age), p.best,
-    role ? scout.roleScore(p, role).toFixed(1) : roles, p.club || (scout.isFreeAgent(p) ? 'free agent' : 'unknown club'), money(p.value),
+    role ? scout.roleScore(p, role).toFixed(1) : roles, p.club || (scout.isFreeAgent(p) ? 'free agent' : 'unknown club'), price(p),
     idx == null ? '-' : `x${idx.toFixed(2)}`, `${wage(p.wage)} to ${year(p.contractEnd)}`];
 }
 const PLAYER_HEADERS = (role) => ['Player', 'CA/PA', 'Age', 'Pos', role ? `${role} score` : 'Best roles', 'Club', 'Value', 'Price vs usual', 'Wage'];
@@ -136,7 +137,7 @@ tool('player', 'Full profile of one player: attributes (1-20), hidden attributes
   return text([
     `## ${p.name}`,
     `${p.age == null ? '?' : Math.floor(p.age)} years (born ${p.dob || '?'})${p.nation ? `, ${p.nation}` : ''}${p.height ? `, ${p.height} cm` : ''}, ${p.foot || '?'} foot`,
-    `CA ${p.ca} / PA ${p.pa}. Club: ${p.club || (scout.isFreeAgent(p) ? 'free agent' : 'unknown club')}. Wage ${wage(p.wage)}/week to ${p.contractEnd || '?'}. Value ${money(p.value)}${idx == null ? '' : ` (x${idx.toFixed(2)} of the usual price for CA ${p.ca})`}.`,
+    `CA ${p.ca} / PA ${p.pa}. Club: ${p.club || (scout.isFreeAgent(p) ? 'free agent' : 'unknown club')}. Wage ${wage(p.wage)}/week to ${p.contractEnd || '?'}. Value ${p.notForSale ? 'at the £300m cap (very high or not for sale)' : money(p.value)}${idx == null ? '' : ` (x${idx.toFixed(2)} of the usual price for CA ${p.ca})`}.`,
     `Positions: ${pos}. Role scores: ${roles}.`,
     groups, pers,
     others.length ? `\nOther matches: ${others.map((o) => `${o.name} (${o.club || 'free'}, ${o.ca})`).join(', ')}` : '',

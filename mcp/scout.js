@@ -21,6 +21,7 @@ const XI = [['GK', 1], ['FB', 2], ['CB', 2], ['DM', 1], ['CM', 1], ['AM', 1], ['
 const FILL_ORDER = ['GK', 'CB', 'FB', 'ST', 'DM', 'CM', 'AM', 'W'];
 
 const YEAR_MS = 365.25 * 24 * 3600 * 1000;
+const VALUE_CAP = 300000000;
 
 const fold = (s) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
@@ -42,7 +43,9 @@ function slim(parsed, file) {
       nationUid: p.nation_uid,
       club: p.club ? p.club.name || p.club.short_name : null,
       clubShort: p.club ? p.club.short_name || null : null,
-      value: p.valuation_unverified || 0,
+      // null = no value stored; the 300m cap is "very high or not for sale", not a price.
+      value: p.valuation_unverified == null || p.valuation_unverified >= VALUE_CAP ? null : p.valuation_unverified,
+      notForSale: p.valuation_unverified >= VALUE_CAP,
       wage: p.contract ? p.contract.weekly_wage : null,
       contractEnd: p.contract ? p.contract.ends : null,
       height: p.height_cm,
@@ -85,6 +88,9 @@ function rolesOf(p, min = 15) {
 function valueMedians(players) {
   const byCa = new Map();
   for (const p of players) if (p.value > 0) (byCa.get(p.ca) || byCa.set(p.ca, []).get(p.ca)).push(p.value);
+  // Capped players are the most expensive ones; leaving them out would understate
+  // the usual price of strong players, so count them at the cap.
+  for (const p of players) if (p.notForSale) (byCa.get(p.ca) || byCa.set(p.ca, []).get(p.ca)).push(VALUE_CAP);
   const med = {};
   for (let ca = 1; ca <= 200; ca++) {
     const vals = [];
@@ -134,7 +140,7 @@ function findPlayers(data, query) {
 const SORTS = {
   ca: (data, p) => p.ca,
   pa: (data, p) => p.pa,
-  value: (data, p) => -p.value,
+  value: (data, p) => (p.value == null ? -Infinity : -p.value),
   potential_gap: (data, p) => p.pa - p.ca,
   bargain: (data, p) => { const i = priceIndex(data, p); return i == null ? (p.club ? -Infinity : 1) : -i; },
 };
@@ -155,8 +161,9 @@ function search(data, f = {}) {
     if (f.min_pa != null && p.pa < f.min_pa) return false;
     if (f.min_age != null && (p.age == null || p.age < f.min_age)) return false;
     if (f.max_age != null && (p.age == null || p.age >= f.max_age + 1)) return false;
-    if (f.max_value != null && p.value > f.max_value) return false;
-    if (f.min_value != null && p.value < f.min_value) return false;
+    // A budget filter needs a known price; free agents cost nothing.
+    if (f.max_value != null && !(isFreeAgent(p) || (p.value != null && p.value <= f.max_value))) return false;
+    if (f.min_value != null && !(p.value != null && p.value >= f.min_value)) return false;
     if (f.max_wage != null && p.wage != null && p.wage > f.max_wage) return false;
     if (f.max_price_index != null) { const i = priceIndex(data, p); if (i == null || i > f.max_price_index) return false; }
     if (f.free_agents_only && !isFreeAgent(p)) return false;
@@ -209,7 +216,7 @@ function similar(data, ref, f = {}) {
     ? 1 - corr(centred(p))
     : Math.abs(p.ca - ref.ca) / 10 + Math.abs(p.pa - ref.pa) / 10 + Math.abs((p.age ?? 99) - (ref.age ?? 99)) / 2);
   const rows = data.players.filter((p) => p.uid !== ref.uid
-    && (f.max_value == null || p.value <= f.max_value)
+    && (f.max_value == null || isFreeAgent(p) || (p.value != null && p.value <= f.max_value))
     && (f.max_age == null || (p.age != null && p.age < f.max_age + 1))
     && (minCa == null || p.ca >= minCa)
     && (f.exclude_club == null || !sameClub(p, f.exclude_club))

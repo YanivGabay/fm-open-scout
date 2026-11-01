@@ -93,6 +93,7 @@ The trailing directory frame has no chunk header.
    - FM26 then inserts an extra `u16` (6).
    - Next comes a `u32 4` + 4-digit tag (`"2430"`, `"2600"`); FM24 follows it with `"K2"`, FM26 with `" 5"`.
    - The first two digits of the tag are the fallback major version.
+   - Some FM24 saves (2 of 14 local FM24 saves, both last saved with 24.4.2) have `u32 8` where `"DB" u16 0x0f` normally is. There the schema version is the `u16` just before the tag, and the rest of the header is unchanged.
 
 3. **In-game current date** (verified FM24, inferred FM26/FM27): after the tag string come `u16, u16 year, u32`, then (FM27 only) 8 more bytes, then `u16 year, u16, date`. So the date is 16 bytes after the tag string in FM24/FM26 (`game_db` +36 / +42) and 24 bytes after it in FM27 (+50). The parser picks the gap (8 or 16) at which the second year is within 3 of the first.
    - FM27: 2025-12-31 (Man Utd save), the same value as in `save_game_summary.dat`; the latest contract start in the save is 2025-12-29.
@@ -148,7 +149,7 @@ Offsets are relative to **r**, the position of the Current Ability field.
 | r+15 / r+16 | u16 | **team id** of the player's club team (FFFF = none); resolved to a club via §4.4 | verified (exact mapping, §4.4) |
 | p = 4+hdr | u8×15 | position ratings 1..20: GK SW DL DC DR DM ML MC MR AML AMC AMR ST WBL WBR | verified (Haaland: ST 20 only; Mbappé: AML/ST) |
 | a = p+15 | u8×54 | attributes, stored on a 1..100 scale (display ≈ raw/5) | verified, see §4.3 |
-| a+54 | u32 | GBP amount, exposed as `valuation_unverified`. It correlates with CA (r = 0.68 FM24) and is capped at 300 000 000. FM26 values look like market values (Yamal 265.7m, Haaland 181.4m; women's players around 1–2m). But FM24 has CA-105 players at the cap, so it may be an asking price instead. | unknown meaning |
+| a+54 | u32 | GBP amount, exposed as `valuation_unverified`. It correlates with CA (r = 0.68 FM24) and is capped at 300 000 000. FM26 values look like market values (Yamal 265.7m, Haaland 181.4m; women's players around 1–2m). But FM24 has CA-105 players at the cap, so it may be an asking price instead. Two special values: `FFFFFFFF` means no value (≈5 % of FM26/FM27 players, nearly all low-CA free agents; reported as null), and exactly 300 000 000 is shared by stars (Yamal, Kane, Messi) and ~1 000 contracted CA 80–100 players, so it reads as "very high or not for sale" rather than a price. | unknown meaning |
 | a+58 | u8 | unknown | unknown |
 | a+59 | date | date joined current club | verified (Haaland 2022-07-01; Mbappé FM26 2024-07-01) |
 | a+63 | date | second date: null in ≥98 % of records; when set, it holds one save-wide date (FM24 2023-11-17, FM26 2025-08-25) | unknown meaning |
@@ -157,6 +158,7 @@ Offsets are relative to **r**, the position of the Current Ability field.
 **Dates.** A date is a `u16` day field plus a `u16` year.
 - The low 9 bits of the day field are the 1-based day of the year. The upper 7 bits are flags, set on many "joined" dates.
 - `01 00 6c 07` (day 1, year 1900) is the null date. FootballSaveScout's "tail marker" is just this null date.
+- `02 00 6c 07` (day 2, year 1900) is the end date of every non-contract deal (amateurs on no wage, ~9 % of FM27 players); it is reported as no end date.
 
 **Scan.** The parser checks every offset `u` where `u32[u] == u32[u+4]` (UID not 0 or FFFFFFFF). For that anchor, all of the following must hold:
 - CA 1..200 and PA -10..200
@@ -325,7 +327,9 @@ Personality order: adaptability, ambition, loyalty, pressure, professionalism, s
 
 - reject a nationality index outside the save's nation table, and a birth date after the in-game date. Some person objects contain byte runs that pass every other check; before this rule they gave 846 players of an FM27 save (67 in FM24) a stranger's name, always with nation index ≥ 251 and a birth year such as 2048. With it, all of them get their real name block.
 
-**Coverage:** 86 720 / 88 297 named (FM24, 98.2 %), 109 310 / 109 782 (FM26, 99.6 %).
+- single-name players (mostly Brazilian and Spanish newgens) store the first-name id in the common-name field, an id beyond the common-name table. Such a block is accepted, with the first name as the common name, only when the search range holds no ordinary block, because a neighbouring newgen's single-name block can sit before a player's own block. Before this rule 1–4 % of players were unnamed, growing with career length (2 803 in an FM24 save in 2027); with it, 17. No previously named player changes name.
+
+**Coverage:** FM24 Crystal Palace 13 unnamed of 88 297 (was 1 577), FM24 Sporting CP (season 2027) 17 of 72 379 (was 2 803), FM26 2 of 109 782 (was 472), FM27 1 of 81 789 (was 230).
 
 ### 4.6 Contracts, wages, transfers (`contracts.rs`)
 

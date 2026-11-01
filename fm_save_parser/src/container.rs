@@ -115,8 +115,8 @@ impl FmContainer {
         if !Self::has_signature(d) {
             let got: Vec<u8> = d.iter().take(9).copied().collect();
             return Err(FmError::InvalidFile(format!(
-                "bad signature {:02x?}: not an 'fmf.' container. Only the FM24/FM26 \
-                 container is verified; see FORMAT.md §9 for older versions",
+                "bad signature {:02x?}: not an 'fmf.' container (the FM24-FM27 save format). \
+                 Is this a Football Manager .fm save? Older versions: see FORMAT.md §9",
                 got
             )));
         }
