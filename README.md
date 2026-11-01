@@ -35,35 +35,25 @@ Open-source scouting for your own Football Manager saves. Ask your AI assistant
 
 ## Quick start
 
-Requirements: Node.js 20+.
+Requirements: [Node.js](https://nodejs.org) 20 or newer. Nothing else: the save parser for
+your system (Windows, macOS, Linux) is downloaded from the GitHub release on first use
+and checked against the release's SHA-256 checksums.
+
+### Claude Code
 
 ```bash
-git clone https://github.com/YanivGabay/fm-open-scout.git && cd fm-open-scout
-npm install
-```
-
-Then get the save parser, either:
-
-- **Download it:** from the [latest release](https://github.com/YanivGabay/fm-open-scout/releases/latest),
-  take the file for your system and save it as `bin/fm_save_parser` (`bin\fm_save_parser.exe`
-  on Windows; on macOS and Linux run `chmod +x bin/fm_save_parser`), or
-- **Build it** with [Rust](https://rustup.rs): `(cd fm_save_parser && cargo build --release)`.
-
-### Use it from Claude Code
-
-```bash
-claude mcp add fm-open-scout -- node /path/to/fm-open-scout/mcp/server.js
-```
-
-Optional: copy the skill so Claude follows the scouting workflow.
-
-```bash
-mkdir -p ~/.claude/skills && cp -r skills/fm-scout ~/.claude/skills/
+claude mcp add fm-open-scout -- npx -y fm-open-scout
 ```
 
 Then ask: *"load my newest FM save and tell me what my squad lacks"*.
 
-### Use it from Claude Desktop or other MCP clients
+Optional: add the scouting skill so Claude follows a good scouting workflow.
+
+```bash
+mkdir -p ~/.claude/skills/fm-scout && curl -fsSL https://raw.githubusercontent.com/YanivGabay/fm-open-scout/main/skills/fm-scout/SKILL.md -o ~/.claude/skills/fm-scout/SKILL.md
+```
+
+### Claude Desktop and other MCP clients
 
 Add to the client's MCP configuration (for Claude Desktop: `claude_desktop_config.json`):
 
@@ -71,11 +61,20 @@ Add to the client's MCP configuration (for Claude Desktop: `claude_desktop_confi
 {
   "mcpServers": {
     "fm-open-scout": {
-      "command": "node",
-      "args": ["/path/to/fm-open-scout/mcp/server.js"]
+      "command": "npx",
+      "args": ["-y", "fm-open-scout"]
     }
   }
 }
+```
+
+### From source
+
+```bash
+git clone https://github.com/YanivGabay/fm-open-scout.git && cd fm-open-scout
+npm install
+(cd fm_save_parser && cargo build --release)   # optional: otherwise the release binary is downloaded
+claude mcp add fm-open-scout -- node "$PWD/mcp/server.js"
 ```
 
 ### Settings (environment variables)
@@ -83,7 +82,7 @@ Add to the client's MCP configuration (for Claude Desktop: `claude_desktop_confi
 | Variable | Default |
 |---|---|
 | `FM_SAVE_DIRS` | Auto-detected `Sports Interactive/Football Manager */games` folders (Windows, macOS, Linux, WSL). Separate several with `:` (`;` on Windows). |
-| `FM_SAVE_PARSER` | `fm_save_parser/target/release/fm_save_parser` |
+| `FM_SAVE_PARSER` | A local build (`bin/` or `fm_save_parser/target/release/`), else the release binary downloaded to the cache |
 | `FM_OPEN_SCOUT_CACHE` | `~/.cache/fm-open-scout` (parsed saves; delete any time) |
 | `FM_OPEN_SCOUT_QUIET` | Set to `1` to hide the one-line donation note shown on `load_save` |
 
@@ -99,7 +98,7 @@ fm_save_parser/target/release/fm_save_parser players "My Save.fm" --top 30 --jso
 | Problem | Fix |
 |---|---|
 | "no .fm saves found" | Saves are looked for in `Sports Interactive/Football Manager */games` (and `cloud/games`) under Documents, OneDrive\Documents, AppData\Local, macOS Application Support and Steam Proton prefixes. If yours are elsewhere, set `FM_SAVE_DIRS`. |
-| "parser not found" | Put the release binary in `bin/` or build it (see Quick start), or set `FM_SAVE_PARSER`. |
+| Parser download fails | The machine needs internet access to github.com once. Or download the file for your system from the [releases](https://github.com/YanivGabay/fm-open-scout/releases) and set `FM_SAVE_PARSER` to it. |
 | Results look out of date | Save the game again; the tools always use the newest save and say when a newer one appears. |
 | "bad signature" | The file is not an FM24-FM27 save (or is still being written). Older versions: see FORMAT.md §9. |
 | A target "doesn't want to sign" | Players compare their reputation with your club's. Search lower-reputation leagues and use promotion clauses or loans. |

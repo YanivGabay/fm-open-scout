@@ -6,13 +6,56 @@ const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { slim } = require('./scout');
 
+const pkg = require('../package.json');
+
 const REPO = path.resolve(__dirname, '..');
 const EXE = process.platform === 'win32' ? 'fm_save_parser.exe' : 'fm_save_parser';
-// FM_SAVE_PARSER, a downloaded release binary in bin/, or a local cargo build.
-const PARSER = process.env.FM_SAVE_PARSER
-  || [path.join(REPO, 'bin', EXE), path.join(REPO, 'fm_save_parser', 'target', 'release', EXE)].find((p) => fs.existsSync(p))
-  || path.join(REPO, 'fm_save_parser', 'target', 'release', EXE);
 const CACHE_DIR = process.env.FM_OPEN_SCOUT_CACHE || path.join(os.homedir(), '.cache', 'fm-open-scout');
+// FM_SAVE_PARSER, a release binary put in bin/, or a local cargo build.
+const LOCAL_PARSER = process.env.FM_SAVE_PARSER
+  || [path.join(REPO, 'bin', EXE), path.join(REPO, 'fm_save_parser', 'target', 'release', EXE)].find((p) => fs.existsSync(p));
+
+// Release asset per platform (see .github/workflows/release.yml).
+const RELEASE_ASSETS = {
+  'linux-x64': 'fm_save_parser-x86_64-unknown-linux-gnu',
+  'win32-x64': 'fm_save_parser-x86_64-pc-windows-msvc.exe',
+  'darwin-arm64': 'fm_save_parser-aarch64-apple-darwin',
+  'darwin-x64': 'fm_save_parser-x86_64-apple-darwin',
+};
+const RELEASES = process.env.FM_OPEN_SCOUT_RELEASES || `https://github.com/YanivGabay/fm-open-scout/releases/download/v${pkg.version}`;
+
+async function fetchOk(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download failed: ${url} (HTTP ${res.status})`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+// Downloads a release asset to `dest` after checking it against the release's
+// SHA256SUMS. Nothing is written when the checksum does not match.
+async function downloadParser(base, asset, dest) {
+  const sums = (await fetchOk(`${base}/SHA256SUMS`)).toString('utf8');
+  const line = sums.split('\n').find((l) => l.trim().split(/\s+/)[1] === asset);
+  if (!line) throw new Error(`${asset} is not listed in ${base}/SHA256SUMS`);
+  const bytes = await fetchOk(`${base}/${asset}`);
+  const got = crypto.createHash('sha256').update(bytes).digest('hex');
+  if (got !== line.trim().split(/\s+/)[0]) throw new Error(`checksum mismatch for ${asset}: refusing to use it`);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  const tmp = `${dest}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, bytes, { mode: 0o755 });
+  fs.renameSync(tmp, dest);
+  return dest;
+}
+
+// The parser to run: a local one, or the release binary for this platform,
+// downloaded once into the cache.
+async function parserPath() {
+  if (LOCAL_PARSER) return LOCAL_PARSER;
+  const asset = RELEASE_ASSETS[`${process.platform}-${process.arch}`];
+  const dest = path.join(CACHE_DIR, 'bin', `v${pkg.version}`, EXE);
+  if (fs.existsSync(dest)) return dest;
+  if (!asset) throw new Error(`no prebuilt parser for ${process.platform}-${process.arch}. Build it with "cargo build --release" in fm_save_parser/ and set FM_SAVE_PARSER.`);
+  return downloadParser(RELEASES, asset, dest);
+}
 const CACHE_FORMAT = 5;
 
 function listDir(dir) {
@@ -73,13 +116,10 @@ function cacheKey(file) {
   return crypto.createHash('sha1').update(`${CACHE_FORMAT}|${path.resolve(file)}|${st.size}|${st.mtimeMs}`).digest('hex');
 }
 
-function runParser(file, out) {
+async function runParser(file, out) {
+  const parser = await parserPath();
   return new Promise((resolve, reject) => {
-    if (!fs.existsSync(PARSER)) {
-      reject(new Error(`parser not found at ${PARSER}. Download it from the GitHub releases into bin/ (as ${EXE}), build it with "cargo build --release" in fm_save_parser/, or set FM_SAVE_PARSER.`));
-      return;
-    }
-    execFile(PARSER, ['players', file, '--top', '0', '--json', out], { maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
+    execFile(parser, ['players', file, '--top', '0', '--json', out], { maxBuffer: 16 * 1024 * 1024 }, (err, stdout, stderr) => {
       if (err) reject(new Error(`parser failed: ${stderr || err.message}`));
       else resolve(stderr);
     });
@@ -103,4 +143,4 @@ async function loadSave(file) {
   }
 }
 
-module.exports = { PARSER, CACHE_DIR, defaultSaveDirs, listSaves, loadSave };
+module.exports = { CACHE_DIR, RELEASE_ASSETS, defaultSaveDirs, listSaves, loadSave, parserPath, downloadParser };

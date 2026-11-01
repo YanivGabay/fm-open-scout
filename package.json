@@ -1,21 +1,39 @@
 {
   "name": "fm-open-scout",
-  "version": "0.1.0",
-  "description": "Open-source scouting for your own Football Manager saves (JS companion to fm_save_parser)",
+  "version": "0.2.0",
+  "description": "Open-source scouting for your own Football Manager saves: MCP server, AI scouting skill and save parser",
   "keywords": [
     "football-manager",
     "fm24",
     "fm26",
     "fm27",
     "scouting",
+    "mcp",
+    "mcp-server",
     "save-parser"
   ],
   "author": "Yaniv Gabay",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YanivGabay/fm-open-scout.git"
+  },
+  "homepage": "https://github.com/YanivGabay/fm-open-scout#readme",
+  "bugs": {
+    "url": "https://github.com/YanivGabay/fm-open-scout/issues"
+  },
   "main": "lib/fmsave.js",
   "bin": {
+    "fm-open-scout": "mcp/server.js",
     "fm-open-scout-mcp": "mcp/server.js"
   },
+  "files": [
+    "mcp/*.js",
+    "skills/",
+    "README.md",
+    "LICENSE",
+    "FORMAT.md"
+  ],
   "scripts": {
     "decompress": "node decompress_fm.js",
     "analyze": "node analyze_fm_data.js",

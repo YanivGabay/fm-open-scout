@@ -1,6 +1,6 @@
 [package]
 name = "fm_save_parser"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Football Manager (.fm) save file parser with per-version layout dispatch (part of fm-open-scout)"
 license = "MIT"
