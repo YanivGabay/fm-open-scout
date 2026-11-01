@@ -15,13 +15,14 @@ Open-source scouting for your own Football Manager saves. Ask your AI assistant
 - **Reads `.fm` saves** from FM24, FM26 and FM27, including FM24 careers re-saved by FM27.
   Other versions are read with a statistical layout probe and clearly marked as unverified.
 - **Every player in the database:** CA and PA, all 54 attributes (including hidden ones),
-  personality, positions, club, contract, wage, value and last transfer fee.
+  personality, positions, club, contract, wage, value, last transfer fee, and for loaned
+  players the parent club and its contract.
 - **Scouting tools for AI assistants** through an [MCP](https://modelcontextprotocol.io) server:
 
   | Tool | What it answers |
   |---|---|
   | `list_saves` / `load_save` | Which saves you have; loads the newest by default and warns when a newer one appears |
-  | `search_players` | Filter by role, position, CA, PA, age, value, wage, club, nation, free agents; sort by CA, PA, role fit, price or "bargain" (cheap for their CA) |
+  | `search_players` | Filter by role, position, CA, PA, age, value, wage, club, nation, free agents, and "realistic for my club" (players likely to accept a move); sort by CA, PA, role fit, price or "bargain" (cheap for their CA) |
   | `player` | Full profile, including hidden attributes and personality |
   | `squad` / `compare_squads` | Your squad, best XI by slot, and where it falls short of your rivals |
   | `similar_players` | Players like X, by CA/PA/age or by playing style |

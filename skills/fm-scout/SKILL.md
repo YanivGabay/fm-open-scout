@@ -43,6 +43,14 @@ For each weak role run several `search_players` queries:
 | Free | `free_agents_only: true` |
 | Retrainable | `min_rating: 13` (a player who can learn the position) |
 
+Add `realistic_for: "<user's club>"` to every query once the user is at a smaller club, or
+as soon as they say targets refuse to talk. It keeps players whose reputation, and whose
+club's, is at most slightly above the user's club. Big-club players usually refuse a step
+down.
+
+A player "on loan from X" is bought from X: his wage and contract shown are X's, and the
+loan club cannot sell him.
+
 Then open the shortlisted players with `player` and check:
 - **Determination and professionalism**: low values (< 10) mean the player will likely
   not reach his PA. Say so.

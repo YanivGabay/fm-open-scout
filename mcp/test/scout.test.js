@@ -55,6 +55,34 @@ test('budget filters need a known price; capped values are not prices', () => {
   assert.ok(capped.notForSale);
 });
 
+test('realistic_for keeps players at or slightly above the buying club', () => {
+  const rep = (current) => ({ home: current, current, world: current });
+  const team = (club, r, n) => Array.from({ length: n }, () => ({ ...player({ club }), reputation: rep(r) }));
+  const players = [
+    ...team('Small FC', 6000, 15), ...team('Big FC', 7500, 15), ...team('Mid FC', 6050, 15),
+    { ...player({ name: 'Star at Big', club: 'Big FC' }), reputation: rep(6000) },
+    { ...player({ name: 'Famous at Mid', club: 'Mid FC' }), reputation: rep(7000) },
+    { ...player({ name: 'Fits at Mid', club: 'Mid FC' }), reputation: rep(6050) },
+    { ...player({ name: 'Loanee from Big', club: 'Mid FC' }), reputation: rep(6000), loanFrom: { club: 'Big FC', until: '2027-06-30' } },
+    { ...player({ name: 'Free', club: null, free: true }), reputation: rep(6000) },
+  ];
+  const names = scout.search({ players }, { realistic_for: 'Small FC', min_ca: 0, limit: 100 }).rows.map((p) => p.name);
+  assert.ok(names.includes('Fits at Mid') && names.includes('Free'));
+  assert.ok(!names.includes('Star at Big'), 'his club is far above');
+  assert.ok(!names.includes('Famous at Mid'), 'he is far above');
+  assert.ok(!names.includes('Loanee from Big'), 'he is bought from his parent club');
+});
+
+test('a loaned player shows his parent contract and where to buy him', () => {
+  const data = scout.slim({ version: {}, layout: {}, players: [{
+    name: 'Marash Kumbulla', uid: 1, current_ability: 134, potential_ability: 144, attributes: { determination: 11 }, positions: { DC: 20 },
+    club: { name: 'Vallecano' }, contract: { weekly_wage: 0, ends: '2027-06-30', loan: true },
+    loan_from: { club_name: 'AS Roma', weekly_wage: 55010, ends: '2028-06-30' },
+  }] });
+  const p = data.players[0];
+  assert.deepEqual([p.wage, p.contractEnd, p.loanFrom.club, p.loanFrom.until], [55010, '2028-06-30', 'AS Roma', '2027-06-30']);
+});
+
 test('max_age includes the whole year of that age', () => {
   const data = { players: [player({ name: 'A', age: 25.9 }), player({ name: 'B', age: 26.0 })] };
   assert.deepEqual(scout.search(data, { max_age: 25 }).rows.map((p) => p.name), ['A']);

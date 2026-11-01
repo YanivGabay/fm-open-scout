@@ -49,6 +49,27 @@ pub struct Contract {
     pub ends: Option<String>,
     /// Number of clause entries (bonuses, rises, ...); content not decoded.
     pub clauses: Option<u32>,
+    /// A loan deal: the player is on loan at this club (wage-record byte 27 is
+    /// not FF). His own contract is then `Player::loan_from`.
+    pub loan: bool,
+}
+
+/// The contract with the parent club of a player on loan. In the same block as the
+/// loan deal, with the same grammar, but the wage record's trailer starts `01`
+/// (FM26/FM27 `01 00 00 00`, FM24 `01 00 00 03` / `01 01 01 01`) instead of `FF`.
+/// Verified on real loans: FM26 Nicolas Jackson at Bayern from Chelsea (£120 000
+/// to 2031), El Bilal Touré at Beşiktaş from Atalanta, Boubacar Traoré at Metz from
+/// Wolves. Loan deals and parent contracts match one-to-one in number (FM27: 3 825
+/// loan deals, 3 855 parent contracts).
+#[derive(Debug, Clone, Serialize)]
+pub struct ParentContract {
+    pub team_id: u32,
+    pub club_uid: Option<u32>,
+    pub club_name: Option<String>,
+    /// Weekly wage in the parent contract, GBP.
+    pub weekly_wage: u32,
+    pub starts: Option<String>,
+    pub ends: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -104,6 +125,43 @@ pub fn find_contract(d: &[u8], from: usize, to: usize, team_id: u32, clubs: Opti
         starts: header.and_then(|(k, _)| date(k + 12)),
         ends: header.and_then(|(k, _)| date(k + 8)),
         clauses: header.map(|(_, n)| n),
+        loan: d.get(w + 27).is_some_and(|&b| b != 0xff),
+    })
+}
+
+/// The parent-club contract of a player on loan (see [`ParentContract`]), within
+/// `[from, to)`. `today` (ISO) drops contracts that have already ended.
+pub fn find_parent_contract(d: &[u8], from: usize, to: usize, team_id: u32, clubs: Option<&ClubTable>, today: Option<&str>) -> Option<ParentContract> {
+    let owner = |t: u32| clubs.and_then(|c| c.team(t)).map(|(club, _)| club);
+    let mine = owner(team_id).map(|c| c.uid);
+    let other_club = |t: u32| match clubs {
+        Some(_) => owner(t).is_some_and(|c| Some(c.uid) != mine),
+        None => t != team_id,
+    };
+    let date = |o: usize| FmDate::read(d, o).filter(|x| x.year > 1900).and_then(|x| x.iso());
+    let to = to.min(d.len().saturating_sub(30));
+    (from..to).find_map(|k| {
+        // `01 00 6c 07` is a null date: a different record, not a parent contract.
+        if d.get(k + 21)? != &1 || d.get(k + 23)? != &0 || u32_at(d, k + 13)? != 0 || d.get(k + 24)? != &1 || d.get(k + 25..k + 28)? == [0x00, 0x6c, 0x07] {
+            return None;
+        }
+        if !plausible_date(d, k) || !other_club(u32_at(d, k + 9)?) {
+            return None;
+        }
+        let (h, _) = contract_header(d, k, from.saturating_sub(4096))?;
+        let (starts, ends) = (date(h + 12)?, date(h + 8)?);
+        if today.is_some_and(|t| ends.as_str() < t) {
+            return None;
+        }
+        let team = u32_at(d, k + 9)?;
+        Some(ParentContract {
+            team_id: team,
+            club_uid: owner(team).map(|c| c.uid),
+            club_name: owner(team).and_then(|c| c.name.clone()),
+            weekly_wage: u32_at(d, k + 17)?,
+            starts: Some(starts),
+            ends: Some(ends),
+        })
     })
 }
 
@@ -139,6 +197,10 @@ mod tests {
     use super::*;
 
     fn contract_bytes(team: u32, wage: u32, clauses: u32) -> Vec<u8> {
+        contract_bytes_trailer(team, wage, clauses, [0xff, 0xff, 0xff, 0xff])
+    }
+
+    fn contract_bytes_trailer(team: u32, wage: u32, clauses: u32, trailer: [u8; 4]) -> Vec<u8> {
         let mut v = vec![0xffu8; 8];
         v.extend([0xb5, 0x00, 0xf2, 0x07]); // 2034-06-30
         v.extend([0xb6, 0x00, 0xe6, 0x07]); // 2022-07-01
@@ -155,8 +217,36 @@ mod tests {
         v.extend(team.to_le_bytes());
         v.extend([0u8; 4]);
         v.extend(wage.to_le_bytes());
-        v.extend([1, 0x0b, 0, 0xff, 0xff, 0xff, 0xff]);
+        v.extend([1, 0x0b, 0]);
+        v.extend(trailer);
         v
+    }
+
+    #[test]
+    fn loan_deal_and_parent_contract() {
+        // Kumbulla in an FM27 save: Roma contract (team 905, £55 010 to 2028),
+        // then the loan deal with Vallecano (team 1391, £0).
+        let mut d = vec![0x33u8; 50];
+        d.extend(contract_bytes_trailer(905, 55_010, 0, [0x01, 0x00, 0x00, 0x00]));
+        d.extend([0u8; 40]);
+        d.extend(contract_bytes_trailer(1391, 0, 1, [0xff, 0xff, 0xff, 0x00]));
+        d.extend([0u8; 40]);
+        let loan = find_contract(&d, 0, d.len(), 1391, None).unwrap();
+        assert!(loan.loan);
+        assert_eq!((loan.team_id, loan.weekly_wage), (1391, 0));
+        let p = find_parent_contract(&d, 0, d.len(), 1391, None, Some("2026-07-19")).unwrap();
+        assert_eq!((p.team_id, p.weekly_wage, p.ends.as_deref()), (905, 55_010, Some("2034-06-30")));
+        // Already ended: not a parent contract any more.
+        assert!(find_parent_contract(&d, 0, d.len(), 1391, None, Some("2035-01-01")).is_none());
+        // A normal contract is not a loan deal.
+        let mut normal = vec![0x33u8; 50];
+        normal.extend(contract_bytes(540, 1, 0));
+        normal.extend([0u8; 40]);
+        assert!(!find_contract(&normal, 0, normal.len(), 540, None).unwrap().loan);
+        // A record ending in a null date (01 00 6c 07) is something else.
+        let mut odd = vec![0x33u8; 50];
+        odd.extend(contract_bytes_trailer(905, 55_010, 0, [0x01, 0x00, 0x6c, 0x07]));
+        assert!(find_parent_contract(&odd, 0, odd.len(), 1391, None, None).is_none());
     }
 
     #[test]

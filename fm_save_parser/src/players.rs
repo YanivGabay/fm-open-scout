@@ -23,7 +23,7 @@ use crate::layout::{
     POSITION_COUNT, POSITION_NAMES, REPUTATION_OFFSET, UID_OFFSET,
 };
 use crate::clubs::ClubTable;
-use crate::contracts::{self, Contract, LastTransfer};
+use crate::contracts::{self, Contract, LastTransfer, ParentContract};
 use crate::names::NameTables;
 use crate::nations::{NameSource, Nations};
 use serde::ser::{Serialize, SerializeMap, Serializer};
@@ -127,7 +127,10 @@ pub struct Player {
     pub joined_club: Option<String>,
     pub second_date: Option<String>,
     /// Current contract (wage, dates); `None` when no contract structure is found.
+    /// For a player on loan this is the loan deal (`contract.loan`).
     pub contract: Option<Contract>,
+    /// For a player on loan: his contract with the parent club.
+    pub loan_from: Option<ParentContract>,
     /// Fee and signing wage of the transfer that brought the player to his club.
     pub last_transfer: Option<LastTransfer>,
     /// GBP amount stored right after the attributes. Correlates with CA (r = 0.68 in
@@ -353,6 +356,10 @@ pub fn read_player(
     let name_start = nb.as_ref().map(|b| b.start);
     let club_id_raw = opt_id(lay.club.and_then(|o| u16_at(d, r + o)));
     let contract = club_id_raw.and_then(|t| contracts::find_contract(d, tail, block_end, t as u32, clubs));
+    let loan_from = contract
+        .as_ref()
+        .filter(|c| c.loan)
+        .and_then(|c| contracts::find_parent_contract(d, tail, block_end, c.team_id, clubs, limits.latest_birth.as_deref()));
     let transfer_to = name_start.unwrap_or(block_end).min(block_end);
     let extras: &[usize] = lay.transfer_extra.as_ref().map_or(&[0, 1], std::slice::from_ref);
     let gaps: &[usize] = lay.transfer_gap.as_ref().map_or(&[0, 2], std::slice::from_ref);
@@ -403,6 +410,7 @@ pub fn read_player(
         joined_club: date_iso(lay.joined_date()),
         second_date: date_iso(lay.second_date()),
         contract,
+        loan_from,
         last_transfer,
         valuation_unverified: u32_at(d, r + lay.valuation()).filter(|&v| v != u32::MAX),
         height_cm: lay.height_in_tail.and_then(|o| u8_at(d, tail + o)).filter(|&h| (120..=230).contains(&h)),

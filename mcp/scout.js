@@ -46,8 +46,11 @@ function slim(parsed, file) {
       // null = no value stored; the 300m cap is "very high or not for sale", not a price.
       value: p.valuation_unverified == null || p.valuation_unverified >= VALUE_CAP ? null : p.valuation_unverified,
       notForSale: p.valuation_unverified >= VALUE_CAP,
-      wage: p.contract ? p.contract.weekly_wage : null,
-      contractEnd: p.contract ? p.contract.ends : null,
+      // For a player on loan, wage and contract are those of his parent club (what a
+      // buyer takes over); loanFrom says where to buy him and when the loan ends.
+      wage: p.loan_from ? p.loan_from.weekly_wage : p.contract ? p.contract.weekly_wage : null,
+      contractEnd: p.loan_from ? p.loan_from.ends : p.contract ? p.contract.ends : null,
+      loanFrom: p.loan_from ? { club: p.loan_from.club_name, until: p.contract.ends, loanWage: p.contract.weekly_wage } : null,
       height: p.height_cm,
       foot: p.preferred_foot,
       best: p.best_position,
@@ -119,6 +122,31 @@ function sameClub(p, club) {
   return p.club && fold(p.club) === fold(club);
 }
 
+// A club's reputation: the median current reputation (0-10000) of its 15 most
+// reputable players. Players compare it with their own when deciding to move.
+function clubReputation(data, club) {
+  if (!data.clubReps) {
+    const by = new Map();
+    for (const p of data.players) if (p.club && p.reputation) (by.get(p.club) || by.set(p.club, []).get(p.club)).push(p.reputation.current);
+    const reps = new Map();
+    for (const [c, v] of by) { const top = v.sort((a, b) => b - a).slice(0, 15); reps.set(c, top[top.length >> 1]); }
+    Object.defineProperty(data, 'clubReps', { value: reps, enumerable: false });
+  }
+  return data.clubReps.get(club) ?? null;
+}
+
+// How far above the buying club's reputation a player or his club may be and still
+// be likely to accept. An estimate from the save, not FM's own rule.
+const REP_MARGIN = 100;
+
+function likelyToSign(data, p, buyerRep) {
+  const seller = p.loanFrom ? p.loanFrom.club : p.club;
+  if ((p.reputation ? p.reputation.current : 0) > buyerRep + REP_MARGIN) return false;
+  if (!seller) return true;
+  const sellerRep = clubReputation(data, seller);
+  return sellerRep == null || sellerRep <= buyerRep + REP_MARGIN;
+}
+
 // Club by full or short name ("Man Utd"), exact match first, then partial.
 function findClubName(data, query) {
   const q = fold(query);
@@ -153,7 +181,10 @@ function search(data, f = {}) {
   const club = f.club ? findClubName(data, f.club) : null;
   const exclude = f.exclude_club ? findClubName(data, f.exclude_club) : null;
   const nation = f.nation ? fold(f.nation) : null;
+  const buyer = f.realistic_for ? findClubName(data, f.realistic_for) : null;
+  const buyerRep = buyer ? clubReputation(data, buyer) : null;
   let rows = data.players.filter((p) => {
+    if (buyerRep != null && (p.club === buyer || !likelyToSign(data, p, buyerRep))) return false;
     if (role && roleRating(p, role) < minRating) return false;
     if (f.positions && !f.positions.some((x) => (p.positions[x] || 0) >= minRating)) return false;
     if (f.min_ca != null && p.ca < f.min_ca) return false;
@@ -175,7 +206,7 @@ function search(data, f = {}) {
   const sort = f.sort || (role ? 'role' : 'ca');
   const key = sort === 'role' && role ? (p) => roleScore(p, role) : (p) => (SORTS[sort] || SORTS.ca)(data, p);
   rows = rows.map((p) => ({ p, k: key(p) })).sort((a, b) => b.k - a.k || b.p.ca - a.p.ca).map((x) => x.p);
-  return { total: rows.length, club, exclude, rows: rows.slice(0, Math.min(f.limit || 20, 100)) };
+  return { total: rows.length, club, exclude, buyer, buyerRep, rows: rows.slice(0, Math.min(f.limit || 20, 100)) };
 }
 
 // Best XI by slot: each player is used once; specialist slots are filled first.
@@ -225,4 +256,4 @@ function similar(data, ref, f = {}) {
   return rows.map((r) => ({ ...r.p, similarity: mode === 'attributes' ? 1 - r.d : null }));
 }
 
-module.exports = { ROLES, XI, fold, slim, isFreeAgent, roleScore, roleRating, rolesOf, valueMedians, priceIndex, findClubName, findPlayers, search, bestXI, similar };
+module.exports = { ROLES, XI, REP_MARGIN, fold, slim, isFreeAgent, clubReputation, likelyToSign, roleScore, roleRating, rolesOf, valueMedians, priceIndex, findClubName, findPlayers, search, bestXI, similar };

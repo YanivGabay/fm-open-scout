@@ -13,7 +13,7 @@ const PARSER = process.env.FM_SAVE_PARSER
   || [path.join(REPO, 'bin', EXE), path.join(REPO, 'fm_save_parser', 'target', 'release', EXE)].find((p) => fs.existsSync(p))
   || path.join(REPO, 'fm_save_parser', 'target', 'release', EXE);
 const CACHE_DIR = process.env.FM_OPEN_SCOUT_CACHE || path.join(os.homedir(), '.cache', 'fm-open-scout');
-const CACHE_FORMAT = 4;
+const CACHE_FORMAT = 5;
 
 function listDir(dir) {
   try { return fs.readdirSync(dir); } catch { return []; }

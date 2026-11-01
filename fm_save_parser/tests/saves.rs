@@ -383,3 +383,18 @@ fn nearly_everyone_is_named() {
         assert!(unnamed * 200 < s.players.len(), "{}: {unnamed} of {} unnamed", s.title, s.players.len());
     }
 }
+
+/// Loans: the loan deal is the current contract; the parent club's contract is
+/// `loan_from` (a real 2025/26 loan in the FM26 database).
+#[test]
+fn fm26_loan_parent_contract() {
+    let Some(s) = fm26_data() else { return };
+    let jackson = by_name(s, "Nicolas Jackson");
+    assert_eq!(jackson.club.as_ref().and_then(|c| c.name.as_deref()), Some("FC Bayern München"));
+    assert!(jackson.contract.as_ref().is_some_and(|c| c.loan));
+    let parent = jackson.loan_from.as_ref().expect("parent contract");
+    assert_eq!((parent.club_name.as_deref(), parent.weekly_wage, parent.ends.as_deref()), (Some("Chelsea"), 120_000, Some("2031-06-30")));
+    // A player who is not on loan has neither.
+    let haaland = by_name(s, "Erling Haaland");
+    assert!(haaland.loan_from.is_none() && !haaland.contract.as_ref().unwrap().loan);
+}

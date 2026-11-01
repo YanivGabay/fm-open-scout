@@ -373,6 +373,12 @@ Verified examples:
 
 Lower-league players in non-playable nations mostly have no contract structure of this form. Clause content, bonuses and release clauses are **not decoded**.
 
+**Loans** (verified FM26 and FM27 on real loans; FM24 same structure): a player on loan has two contract records in his block, with the same grammar.
+- **The loan deal** with his current club. Its wage-record trailer ends in a byte other than `FF` (FM26/FM27 `FF FF FF 00`; FM24 `FF FF FF 00`..`0D`). It starts on the loan's start date, ends when the loan ends, and its wage is what the loan club pays (often 0). `contract.loan` is true.
+- **The parent contract** with the club that owns him. Its trailer starts `01` (FM26/FM27 `01 00 00 00`, FM24 `01 00 00 03` / `01 01 01 01`; `01 00 6c 07` is a null date and a different record). It carries the real start, end and wage, and is reported as `loan_from`.
+- Examples: FM26 Nicolas Jackson at Bayern from Chelsea (£120 000 to 2031, loan to 2026); El Bilal Touré at Beşiktaş from Atalanta; Boubacar Traoré at Metz from Wolves; FM27 Kumbulla at Vallecano from Roma (£55 010 to 2028; Vallecano pays 0).
+- Coverage: a parent contract is found for 98.8 % of FM27 loan deals (3 970 / 4 020), 98.6 % FM26, 79.8 % FM24. It is never the player's own club, and its dates contain the loan's in all but 0.3 %.
+
 **Last transfer** (verified FM24 and FM27 against public fees; FM26 has the same fields):
 
 ```

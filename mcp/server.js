@@ -15,8 +15,8 @@ const DONATE = 'Enjoying fm-open-scout? buymeacoffee.com/yanivga (hide with FM_O
 let current = null; // { data, path, modified }
 
 const money = (v) => (v == null ? '-' : v >= 1e6 ? `£${(v / 1e6).toFixed(1)}m` : `£${Math.round(v / 1e3)}k`);
-const price = (p) => (p.notForSale ? '£300m cap' : money(p.value));
-const wage = (w) => (w == null ? '?' : `£${(w / 1000).toFixed(w < 10000 ? 1 : 0)}k`);
+const price = (p) => (p.notForSale ? '£300m cap' : scout.isFreeAgent(p) ? 'free' : money(p.value));
+const wage = (w) => (w == null ? '?' : w < 1000 ? `£${w}` : `£${(w / 1000).toFixed(w < 10000 ? 1 : 0)}k`);
 const year = (d) => (d ? d.slice(0, 4) : '?');
 const local = (t) => { const d = new Date(t - t.getTimezoneOffset() * 60000); return d.toISOString().slice(0, 16).replace('T', ' '); };
 const text = (s) => ({ content: [{ type: 'text', text: s }] });
@@ -26,11 +26,16 @@ function table(headers, rows) {
   return [`| ${headers.join(' | ')} |`, `|${headers.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.join(' | ')} |`)].join('\n');
 }
 
+function clubText(p) {
+  const club = p.club || (scout.isFreeAgent(p) ? 'free agent' : 'unknown club');
+  return p.loanFrom ? `${club} (on loan from ${p.loanFrom.club || '?'} to ${year(p.loanFrom.until)})` : club;
+}
+
 function playerRow(data, p, role) {
   const idx = scout.priceIndex(data, p);
   const roles = scout.rolesOf(p).slice(0, 2).map((r) => `${r.role} ${r.score.toFixed(1)}`).join(', ');
   return [p.name, `${p.ca}/${p.pa}`, p.age == null ? '?' : Math.floor(p.age), p.best,
-    role ? scout.roleScore(p, role).toFixed(1) : roles, p.club || (scout.isFreeAgent(p) ? 'free agent' : 'unknown club'), price(p),
+    role ? scout.roleScore(p, role).toFixed(1) : roles, clubText(p), price(p),
     idx == null ? '-' : `x${idx.toFixed(2)}`, `${wage(p.wage)} to ${year(p.contractEnd)}`];
 }
 const PLAYER_HEADERS = (role) => ['Player', 'CA/PA', 'Age', 'Pos', role ? `${role} score` : 'Best roles', 'Club', 'Value', 'Price vs usual', 'Wage'];
@@ -99,6 +104,7 @@ tool('search_players',
     max_price_index: z.number().optional().describe('Only players priced at most this share of the usual price for their CA (0.35 = undervalued)'),
     free_agents_only: z.boolean().optional(),
     club: z.string().optional(), exclude_club: z.string().optional(), nation: z.string().optional(),
+    realistic_for: z.string().optional().describe('Your club: keep only players likely to consider joining it (their reputation and their club\'s are at most slightly above yours). Players far above your club\'s reputation usually refuse to talk.'),
     sort: z.enum(['ca', 'pa', 'role', 'value', 'bargain', 'potential_gap']).optional(),
     limit: z.number().int().min(1).max(100).optional(),
   },
@@ -106,7 +112,9 @@ tool('search_players',
     const { data, note } = await ensure(args.save);
     const r = scout.search(data, args);
     if (args.club && !r.club) return fail(`no club matching "${args.club}"`);
-    return text(`${header(data)}\n${r.total} match, showing ${r.rows.length}.\n\n${table(PLAYER_HEADERS(args.role), r.rows.map((p) => playerRow(data, p, args.role)))}${note}`);
+    if (args.realistic_for && !r.buyer) return fail(`no club matching "${args.realistic_for}"`);
+    const realistic = r.buyer ? `\nOnly players likely to consider ${r.buyer} (club reputation ${r.buyerRep}; players and their clubs up to ${r.buyerRep + scout.REP_MARGIN}). An estimate, not FM's own rule.` : '';
+    return text(`${header(data)}${realistic}\n${r.total} match, showing ${r.rows.length}.\n\n${table(PLAYER_HEADERS(args.role), r.rows.map((p) => playerRow(data, p, args.role)))}${note}`);
   });
 
 function pick(data, name) {
@@ -137,7 +145,7 @@ tool('player', 'Full profile of one player: attributes (1-20), hidden attributes
   return text([
     `## ${p.name}`,
     `${p.age == null ? '?' : Math.floor(p.age)} years (born ${p.dob || '?'})${p.nation ? `, ${p.nation}` : ''}${p.height ? `, ${p.height} cm` : ''}, ${p.foot || '?'} foot`,
-    `CA ${p.ca} / PA ${p.pa}. Club: ${p.club || (scout.isFreeAgent(p) ? 'free agent' : 'unknown club')}. Wage ${wage(p.wage)}/week to ${p.contractEnd || '?'}. Value ${p.notForSale ? 'at the £300m cap (very high or not for sale)' : money(p.value)}${idx == null ? '' : ` (x${idx.toFixed(2)} of the usual price for CA ${p.ca})`}.`,
+    `CA ${p.ca} / PA ${p.pa}. Club: ${clubText(p)}. Wage ${wage(p.wage)}/week to ${p.contractEnd || '?'}${p.loanFrom ? ` (contract with ${p.loanFrom.club || 'the parent club'}; ${p.club} pays ${wage(p.loanFrom.loanWage)} during the loan)` : ''}. Reputation ${p.reputation ? p.reputation.current : '?'}. Value ${p.notForSale ? 'at the £300m cap (very high or not for sale)' : money(p.value)}${idx == null ? '' : ` (x${idx.toFixed(2)} of the usual price for CA ${p.ca})`}.`,
     `Positions: ${pos}. Role scores: ${roles}.`,
     groups, pers,
     others.length ? `\nOther matches: ${others.map((o) => `${o.name} (${o.club || 'free'}, ${o.ca})`).join(', ')}` : '',
@@ -151,7 +159,7 @@ tool('squad', 'A club\'s squad sorted by CA, with best roles and contracts, plus
   const players = data.players.filter((p) => p.club === name).sort((a, b) => b.ca - a.ca);
   const xi = scout.bestXI(data, name);
   const slots = xi.slots.map((s) => `${s.role}: ${s.players.map((p) => `${p.name} ${p.ca}`).join(', ') || '(none rated 15+)'}`).join('\n');
-  return text(`${header(data)}\n\n## ${name}: ${players.length} players, best XI average CA ${xi.average.toFixed(1)}\n${slots}\n\n${table(PLAYER_HEADERS(), players.map((p) => playerRow(data, p)))}${note}`);
+  return text(`${header(data)}\n\n## ${name}: ${players.length} players, best XI average CA ${xi.average.toFixed(1)}, club reputation ${scout.clubReputation(data, name) ?? '?'}\n${slots}\n\n${table(PLAYER_HEADERS(), players.map((p) => playerRow(data, p)))}${note}`);
 });
 
 tool('compare_squads', 'Compare clubs\' best XI slot by slot (CA) to find where a squad is weak.', { clubs: z.array(z.string()).min(1).max(12), save: saveArg }, async ({ clubs, save }) => {
