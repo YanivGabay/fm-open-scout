@@ -1,0 +1,35 @@
+{
+  "name": "fm-open-scout",
+  "version": "0.1.0",
+  "description": "Open-source scouting for your own Football Manager saves (JS companion to fm_save_parser)",
+  "keywords": [
+    "football-manager",
+    "fm24",
+    "fm26",
+    "fm27",
+    "scouting",
+    "save-parser"
+  ],
+  "author": "Yaniv Gabay",
+  "license": "MIT",
+  "main": "lib/fmsave.js",
+  "bin": {
+    "fm-open-scout-mcp": "mcp/server.js"
+  },
+  "scripts": {
+    "decompress": "node decompress_fm.js",
+    "analyze": "node analyze_fm_data.js",
+    "players": "node find_player_records.js",
+    "mcp": "node mcp/server.js",
+    "test": "node --test mcp/test && cd fm_save_parser && cargo test --release",
+    "test:js": "node --test mcp/test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "fzstd": "^0.1.1",
+    "zod": "4.6.7"
+  }
+}
